@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="ja"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>感情と表情のズレ 比較ツール</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:#0c0f14;color:#e8ecf2;font-family:"Hiragino Sans","Yu Gothic",sans-serif;
+    min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:1rem;}
+  header{width:100%;max-width:900px;padding:0.5rem 0 0.8rem;display:flex;justify-content:space-between;align-items:baseline;}
+  header h1{font-size:1.05rem;font-weight:600;}
+  header .count{font-size:0.85rem;color:#c9a24a;}
+  .compare{width:100%;max-width:900px;display:grid;grid-template-columns:1fr 1fr;gap:0.8rem;}
+  @media(max-width:640px){.compare{grid-template-columns:1fr;}}
+  .side{display:flex;flex-direction:column;}
+  .side .cap{text-align:center;font-size:0.9rem;padding:0.4rem;color:#8a94a6;}
+  .side .cap b{color:#e8ecf2;}
+  .stage{position:relative;aspect-ratio:1/1;border-radius:8px;overflow:hidden;background:#080a0e;}
+  canvas{width:100%;height:100%;display:block;}
+  #video{display:none;}
+  .badge{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);
+    background:rgba(0,0,0,0.6);padding:0.35rem 0.9rem;border-radius:16px;font-size:0.95rem;white-space:nowrap;}
+  .badge b{color:#c9a24a;}
+  .warn{position:absolute;top:8px;left:50%;transform:translateX(-50%);
+    background:rgba(192,57,43,0.85);padding:0.3rem 0.8rem;border-radius:14px;font-size:0.8rem;display:none;}
+  .warn.show{display:block;}
+  .gapmsg{width:100%;max-width:900px;text-align:center;margin-top:0.8rem;font-size:1rem;min-height:1.5rem;}
+  .gapmsg.gap{color:#e74c3c;font-weight:600;}
+  .gapmsg.match{color:#2e7d6f;}
+  .controls{width:100%;max-width:900px;margin-top:0.8rem;display:flex;gap:0.6rem;flex-wrap:wrap;justify-content:center;}
+  button{font-family:inherit;cursor:pointer;border-radius:4px;border:1px solid #3a4a5e;background:transparent;color:#e8ecf2;padding:0.6rem 1.2rem;font-size:0.9rem;}
+  button.primary{background:#c9a24a;color:#0c0f14;border-color:#c9a24a;font-weight:600;}
+  button#download{border-color:#c9a24a;color:#c9a24a;}
+  .hint{width:100%;max-width:900px;margin-top:0.7rem;font-size:0.8rem;color:#8a94a6;line-height:1.7;text-align:center;}
+  .modal{position:fixed;inset:0;background:rgba(10,12,16,0.92);display:none;align-items:center;justify-content:center;z-index:50;padding:1rem;}
+  .modal.show{display:flex;}
+  .card{background:#1a1f28;border:1px solid #3a4a5e;border-radius:10px;padding:1.5rem;width:min(94vw,470px);}
+  .card .judged{text-align:center;margin-bottom:0.3rem;}
+  .card .judged .label{font-size:0.82rem;color:#8a94a6;}
+  .card .judged .emo{font-size:1.5rem;color:#c9a24a;font-weight:700;margin-top:0.2rem;}
+  .card h2{font-size:1rem;text-align:center;margin:1rem 0 0.7rem;}
+  .emos{display:grid;grid-template-columns:repeat(3,1fr);gap:0.5rem;margin-bottom:0.8rem;}
+  .emos button{padding:0.65rem 0.2rem;font-size:0.9rem;}
+  .emos button.sel{background:#c0392b;border-color:#c0392b;color:#fff;}
+  .card textarea{width:100%;background:#0e1116;color:#e8ecf2;border:1px solid #3a4a5e;border-radius:4px;padding:0.7rem;font-family:inherit;font-size:0.95rem;resize:vertical;min-height:52px;}
+  .card .actions{display:flex;gap:0.5rem;margin-top:1rem;}
+  .card .actions button{flex:1;}
+  table{width:100%;max-width:900px;margin-top:1rem;border-collapse:collapse;font-size:0.78rem;}
+  th,td{border-bottom:1px solid #3a4a5e;padding:0.35rem 0.4rem;text-align:left;}
+  th{color:#8a94a6;font-weight:normal;}
+</style></head><body>
+<header>
+  <h1>感情と表情のズレ 比較ツール</h1>
+  <span class="count">記録: <span id="cnt">0</span>件</span>
+</header>
+<div class="compare">
+  <div class="side">
+    <div class="cap">左：<b>見せている表情</b>（機械の判定・自動）</div>
+    <div class="stage">
+      <canvas id="cvLeft" width="500" height="500"></canvas>
+      <div class="warn" id="warn">正面を向いてください</div>
+      <div class="badge">表情: <b id="leftEmo">—</b></div>
+    </div>
+  </div>
+  <div class="side">
+    <div class="cap">右：<b>本当の気持ち</b>（あなたの入力）</div>
+    <div class="stage">
+      <canvas id="cvRight" width="500" height="500"></canvas>
+      <div class="badge">本音: <b id="rightEmo">—</b></div>
+    </div>
+  </div>
+</div>
+<div class="gapmsg" id="gapmsg"></div>
+<div class="controls">
+  <button id="start" class="primary">はじめる</button>
+  <button id="manual" disabled>今の本音を入れる</button>
+  <button id="download" disabled>CSVをダウンロード</button>
+</div>
+<p class="hint">
+  改善版：顔が正面を向いていないとき（横向き・下向き・傾き）は判定しません。<br>
+  「正面を向いてください」と出たら、判定は止まっています。誤判定を減らすためです。
+</p>
+<video id="video" autoplay playsinline muted></video>
+<table id="log"><thead><tr><th>時刻</th><th>表情(機械)</th><th>本音(あなた)</th><th>ズレ</th><th>メモ</th></tr></thead><tbody></tbody></table>
+
+<div class="modal" id="modal">
+  <div class="card">
+    <div class="judged"><div class="label">今この瞬間、機械はあなたの顔をこう判定</div><div class="emo" id="judgedEmo">—</div></div>
+    <h2>本当は、どう感じていますか？</h2>
+    <div class="emos" id="emoBtns"></div>
+    <textarea id="memo" placeholder="一言メモ（任意）"></textarea>
+    <div class="actions"><button id="cancel">やめる</button><button id="save" class="primary">記録する</button></div>
+  </div>
+</div>
+
+<script type="module">
+  import { FaceLandmarker, FilesetResolver }
+    from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22-rc.20250304";
+  const video=document.getElementById("video");
+  const cvLeft=document.getElementById("cvLeft"),ctxL=cvLeft.getContext("2d");
+  const cvRight=document.getElementById("cvRight"),ctxR=cvRight.getContext("2d");
+  const leftEmo=document.getElementById("leftEmo"),rightEmo=document.getElementById("rightEmo");
+  const warn=document.getElementById("warn");
+  const gapmsg=document.getElementById("gapmsg");
+  const startBtn=document.getElementById("start"),manualBtn=document.getElementById("manual");
+  const downloadBtn=document.getElementById("download");
+  const modal=document.getElementById("modal"),judgedEmo=document.getElementById("judgedEmo");
+  const emoBtns=document.getElementById("emoBtns"),memo=document.getElementById("memo");
+  const cntEl=document.getElementById("cnt"),logBody=document.querySelector("#log tbody");
+
+  const EMO_JP={neutral:"無表情",happy:"笑顔",surprise:"驚き",angry:"怒り",fear:"恐れ",sad:"悲しみ"};
+  const EMO_COLOR={neutral:[127,140,141],happy:[241,196,15],surprise:[155,89,182],angry:[231,76,60],fear:[44,62,80],sad:[52,152,219]};
+  const FEELINGS=[{jp:"普通",key:"neutral"},{jp:"楽しい",key:"happy"},{jp:"驚き",key:"surprise"},
+    {jp:"イライラ",key:"angry"},{jp:"不安・怖い",key:"fear"},{jp:"疲れた・悲しい",key:"sad"},
+    {jp:"必死",key:"angry"},{jp:"焦り",key:"fear"},{jp:"つまらない",key:"sad"}];
+
+  let faceLandmarker=null,running=false;
+  let latestWin="neutral",latestScores={},latestBlend="",faceOK=false;
+  let trueFeeling=null;
+  const records=[];
+
+  // ★改善1: 顔の向きチェック（正面かどうか）
+  const checkFrontal=(lm)=>{
+    // 468点のうち: 左目尻33, 右目尻263, 鼻先1, 上10, 下152, 左輪郭234, 右輪郭454
+    const nose=lm[1], left=lm[234], right=lm[454], top=lm[10], bottom=lm[152];
+    // 左右の顔幅の対称性（横向き検出）: 鼻が左右輪郭の中央にあるか
+    const faceW=Math.abs(right.x-left.x)||0.001;
+    const noseOff=Math.abs(nose.x-(left.x+right.x)/2)/faceW; // 0=中央
+    // 上下の傾き（下向き検出）: z座標も使う
+    const vTilt=Math.abs((top.y+bottom.y)/2 - nose.y); // 鼻が上下中央から離れすぎ
+    // 顔の回転（傾き）: 左右の目の高さの差
+    const eyeTilt=Math.abs(lm[33].y - lm[263].y)/faceW;
+    // しきい値: 横向き0.12以内、傾き0.15以内
+    const frontal = noseOff<0.13 && eyeTilt<0.16;
+    return frontal;
+  };
+
+  // ★改善2: 恐れ・悲しみの過剰強化(1.25)を撤回、標準に。しきい値も上げる。
+  const computeScores=(cats)=>{
+    const g=(n)=>{const c=cats.find(s=>s.categoryName===n);return c?c.score:0;};
+    const avg=(l,r)=>(g(l)+g(r))/2;
+    const blink=Math.max(g("eyeBlinkLeft"),g("eyeBlinkRight"));
+    const eyeWide=Math.max(0,avg("eyeWideLeft","eyeWideRight")-blink*0.5);
+    const browInner=g("browInnerUp"),browDown=avg("browDownLeft","browDownRight");
+    const browOuter=avg("browOuterUpLeft","browOuterUpRight");
+    const frown=avg("mouthFrownLeft","mouthFrownRight"),stretch=avg("mouthStretchLeft","mouthStretchRight");
+    const press=avg("mouthPressLeft","mouthPressRight"),lowerDown=avg("mouthLowerDownLeft","mouthLowerDownRight");
+    const smile=avg("mouthSmileLeft","mouthSmileRight"),jawOpen=g("jawOpen");
+    const noseSneer=avg("noseSneerLeft","noseSneerRight");
+    let happy=smile;
+    let surprise=(jawOpen*0.5+browOuter*0.3+eyeWide*0.4)*(1-smile*0.4);
+    let angry=browDown*0.8+press*0.3+noseSneer*0.2;
+    let fear=browInner*0.4+browOuter*0.25+eyeWide*0.45+stretch*0.55;   // ←1.25倍を撤回
+    let sad=browInner*0.55+frown*0.75+press*0.25+lowerDown*0.2;        // ←1.25倍を撤回
+    const maxO=Math.max(happy,surprise,angry,fear,sad);
+    let neutral=Math.max(0,0.4-maxO);
+    const raw={neutral,happy,surprise,angry,fear,sad};
+    for(const k in raw) raw[k]=Math.min(1,Math.max(0,raw[k]));
+    let win="neutral",wv=-1; for(const k in raw){if(raw[k]>wv){wv=raw[k];win=k;}}
+    return {raw,win};
+  };
+
+  const particles=[];
+  const draw=()=>{
+    if(!running)return;
+    const res=faceLandmarker.detectForVideo(video,performance.now());
+    ctxL.fillStyle="rgba(8,10,14,0.4)"; ctxL.fillRect(0,0,cvLeft.width,cvLeft.height);
+    if(res.faceLandmarks&&res.faceLandmarks.length>0){
+      const lm=res.faceLandmarks[0];
+      faceOK=checkFrontal(lm);
+      warn.classList.toggle("show",!faceOK);
+      const {raw,win}=computeScores(res.faceBlendshapes[0].categories);
+      // ★正面のときだけ判定を採用
+      if(faceOK){
+        latestWin=win; latestScores=raw;
+        latestBlend=res.faceBlendshapes[0].categories.filter(c=>c.score>0.1).sort((a,b)=>b.score-a.score).slice(0,5).map(c=>`${c.categoryName}:${c.score.toFixed(2)}`).join(" ");
+        leftEmo.textContent=EMO_JP[win];
+      }else{
+        leftEmo.textContent="（顔の向き待ち）";
+      }
+      // 点を描画（向きに関わらず表示、色は判定時のみ）
+      let minX=1,minY=1,maxX=0,maxY=0;
+      for(const p of lm){if(p.x<minX)minX=p.x;if(p.y<minY)minY=p.y;if(p.x>maxX)maxX=p.x;if(p.y>maxY)maxY=p.y;}
+      const bw=(maxX-minX)||1,bh=(maxY-minY)||1,sc=Math.min(cvLeft.width,cvLeft.height)*0.8;
+      const [r,g,b]= faceOK ? EMO_COLOR[win] : [90,100,110];
+      const it= faceOK ? raw[win] : 0.2;
+      for(const p of lm){
+        const nx=(1-(p.x-minX)/bw),ny=(p.y-minY)/bh;
+        const x=cvLeft.width*0.1+nx*sc,y=cvLeft.height*0.1+ny*sc;
+        ctxL.beginPath();ctxL.arc(x,y,1.3+it*3,0,Math.PI*2);
+        ctxL.fillStyle=`rgba(${r},${g},${b},${0.4+it*0.5})`;ctxL.fill();
+      }
+      // ★正面かつ、はっきり度0.45以上（しきい値上げ）でパネル
+      if(faceOK && win!=="neutral" && raw[win]>0.45 && !modal.classList.contains("show") &&
+         performance.now()-lastPanel>20000){
+        openPanel();
+      }
+    }
+    // 右：本音の粒
+    ctxR.fillStyle="rgba(8,10,14,0.16)"; ctxR.fillRect(0,0,cvRight.width,cvRight.height);
+    if(trueFeeling){
+      const [r,g,b]=EMO_COLOR[trueFeeling.key];
+      for(let i=0;i<3;i++){
+        particles.push({x:cvRight.width/2+(Math.random()-0.5)*80,y:cvRight.height/2+(Math.random()-0.5)*80,
+          vx:(Math.random()-0.5)*4,vy:(Math.random()-0.5)*4,life:1,r,g,b,size:2+Math.random()*4});
+      }
+    }
+    for(let i=particles.length-1;i>=0;i--){
+      const p=particles[i];p.x+=p.vx;p.y+=p.vy;p.life-=0.012;
+      if(p.life<=0){particles.splice(i,1);continue;}
+      ctxR.beginPath();ctxR.arc(p.x,p.y,p.size,0,Math.PI*2);
+      ctxR.fillStyle=`rgba(${p.r},${p.g},${p.b},${p.life*0.7})`;ctxR.fill();
+    }
+    if(trueFeeling && faceOK){
+      const same=(trueFeeling.key===latestWin);
+      if(same){gapmsg.className="gapmsg match";gapmsg.textContent="✓ 顔と本音が一致しています";}
+      else{gapmsg.className="gapmsg gap";gapmsg.textContent=`⚡ ズレ：顔は「${EMO_JP[latestWin]}」なのに、本当は「${trueFeeling.jp}」`;}
+    }
+    requestAnimationFrame(draw);
+  };
+
+  let lastPanel=0,frozen={};
+  FEELINGS.forEach(f=>{const b=document.createElement("button");b.textContent=f.jp;
+    b.addEventListener("click",()=>{emoBtns.querySelectorAll("button").forEach(x=>x.classList.remove("sel"));b.classList.add("sel");frozen.sel=f;});
+    emoBtns.appendChild(b);});
+  const openPanel=()=>{
+    frozen={win:latestWin,scores:{...latestScores},blend:latestBlend,sel:null};
+    judgedEmo.textContent=EMO_JP[latestWin];
+    emoBtns.querySelectorAll("button").forEach(x=>x.classList.remove("sel"));memo.value="";
+    modal.classList.add("show");
+  };
+  document.getElementById("cancel").addEventListener("click",()=>{modal.classList.remove("show");lastPanel=performance.now();});
+  document.getElementById("save").addEventListener("click",()=>{
+    if(!frozen.sel){alert("本当の気持ちを選んでください");return;}
+    trueFeeling=frozen.sel;rightEmo.textContent=frozen.sel.jp;
+    const now=new Date(),time=now.toLocaleString("sv-SE").replace("T"," ");
+    const gap=(frozen.sel.key===frozen.win)?"一致":"ズレ";
+    const rec={time,judged:EMO_JP[frozen.win],feeling:frozen.sel.jp,gap,memo:memo.value.trim(),blend:frozen.blend};
+    records.push(rec);
+    const tr=document.createElement("tr");
+    [time.slice(11),rec.judged,rec.feeling,rec.gap,rec.memo].forEach(v=>{const td=document.createElement("td");td.textContent=v;tr.appendChild(td);});
+    logBody.prepend(tr);cntEl.textContent=records.length;downloadBtn.disabled=false;
+    modal.classList.remove("show");lastPanel=performance.now();
+  });
+  manualBtn.addEventListener("click",()=>{if(running)openPanel();});
+  downloadBtn.addEventListener("click",()=>{
+    const header=["時刻","表情(機械)","本音(あなた)","ズレ判定","メモ","ブレンドシェイプ"];
+    const rows=records.map(r=>[r.time,r.judged,r.feeling,r.gap,r.memo,r.blend].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(","));
+    const csv="\uFEFF"+header.join(",")+"\n"+rows.join("\n");
+    const blob=new Blob([csv],{type:"text/csv"});const a=document.createElement("a");
+    a.href=URL.createObjectURL(blob);a.download=`emotion_gap_${new Date().toISOString().slice(0,10)}.csv`;a.click();
+  });
+  const setup=async()=>{
+    const fr=await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22-rc.20250304/wasm");
+    faceLandmarker=await FaceLandmarker.createFromOptions(fr,{
+      baseOptions:{modelAssetPath:"https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task"},
+      runningMode:"VIDEO",numFaces:1,outputFaceBlendshapes:true});
+  };
+  startBtn.addEventListener("click",async()=>{
+    startBtn.disabled=true;startBtn.textContent="準備中…";
+    try{await setup();
+      const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"user"}});
+      video.srcObject=stream;await video.play();
+      running=true;manualBtn.disabled=false;startBtn.textContent="動作中";draw();
+    }catch(e){startBtn.disabled=false;startBtn.textContent="はじめる";
+      alert("カメラを起動できませんでした（権限・https接続を確認）");console.error(e);}
+  });
+</script></body></html>
